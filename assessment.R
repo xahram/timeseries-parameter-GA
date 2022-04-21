@@ -3,8 +3,10 @@ if(!require(devtools)) {
   devtools::install_github("dleutnant/tsconvert")
 }
 
+#load("ga1.RData")
+load("ga3.RData")
 
-#install.packages("remotes")
+tq#install.packages("remotes")
 #remotes::install_github("dleutnant/tsconvert")
 library("tsconvert")
 
@@ -252,7 +254,7 @@ featureFitness <- function(string, init_v) {
   d_value <- bitsToInt(d_value)
   q_value <- bitsToInt(q_value)
   
-  cat(paste("p_value ", p_value, "q_value ", q_value,"d_value ", d_value, "\n"))
+  #cat(paste("p_value ", p_value, "q_value ", q_value,"d_value ", d_value, "\n"))
   mod <- auto.arima(as.data.frame(solar_data)[,4], 
                  max.p = p_value, 
                  max.q = q_value,
@@ -261,72 +263,6 @@ featureFitness <- function(string, init_v) {
   rmse(mod)   
 }
 
-runGA2 <- function(){
-  
-  maxGenerations <<- 5    #<<- makes it a global variable. So it will be visible to other functions e.g. monitor()
-  popSize = 100
-  pcrossover = 0.8
-  pmutation = 0.1
-  type = "binary"
-  fitness = featureFitness   
-  
-  GA <- ga(type=type, fitness = fitness, init_v = binary_vector, nBits = length(binary_vector), 
-           seed=1, popSize = popSize, 
-           pcrossover = pcrossover, pmutation = pmutation, 
-           maxiter = maxGenerations, monitor= monitor)
-
-  return(GA)
-}
-
-some <- runGA2()
-
-runGA <- function(noRuns = 30, problem = "feature"){
-  #Specify GA parameter values; using the default values below. 
-  if (problem == "feature"){
-    maxGenerations <<- 5    #<<- makes it a global variable. So it will be visible to other functions e.g. monitor()
-    popSize = 200
-    pcrossover = 0.8
-    pmutation = 0.1
-    type = "binary"
-    fitness = featureFitness              #fitness function defined in feature-selection.R
-  }
-  
-  else {
-    cat("invalid problem specified. Exiting ... \n")
-    return()
-  }
-  
-  
-  #Set up what stats you wish to note.    
-  statnames = c("best", "mean", "median")
-  thisRunResults <<- matrix(nrow=maxGenerations, ncol = length(statnames)) #stats of a single run
-  resultsMatrix = matrix(1:maxGenerations, ncol = 1)  #stats of all the runs
-  
-  resultNames = character(length(statnames)*noRuns)
-  resultNames[1] = "Generation"
-  
-  bestFitness <<- -Inf
-  bestSolution <<- NULL
-  for (i in 1:noRuns){
-    cat(paste("Starting Run ", i, "\n"))
-    if (problem == "feature")
-      GA <- ga(type=type, fitness = fitness, init_v = binary_vector, nBits = length(binary_vector), 
-               seed=i, popSize = popSize, 
-               pcrossover = pcrossover, pmutation = pmutation, 
-               maxiter = maxGenerations, monitor= monitor)
-   
-    resultsMatrix = cbind(resultsMatrix, thisRunResults)
-    
-    if (GA@fitnessValue > bestFitness){
-      bestFitness <<- GA@fitnessValue
-      bestSolution <<- GA@solution
-    }
-    #Create column names for the resultsMatrix
-    for (j in 1:length(statnames)) resultNames[1+(i-1)*length(statnames)+j] = paste(statnames[j],i)
-  }
-  colnames(resultsMatrix) = resultNames
-  return (resultsMatrix)
-}
 
 getBestFitness<-function(){
   return(bestFitness)
@@ -366,6 +302,83 @@ monitor <- function(obj){
 
 
 
+runGA2 <- function(){
+  
+  maxGenerations <<- 5    #<<- makes it a global variable. So it will be visible to other functions e.g. monitor()
+  popSize = 100
+  pcrossover = 0.8
+  pmutation = 0.1
+  type = "binary"
+  fitness = featureFitness   
+  
+  GA <- ga(type=type, fitness = fitness, init_v = binary_vector, nBits = length(binary_vector), 
+           seed=1, popSize = popSize, 
+           pcrossover = pcrossover, pmutation = pmutation, 
+           maxiter = maxGenerations, monitor= monitor)
+
+  return(GA)
+}
+
+#some <- runGA2()
+
+runGA <- function(noRuns = 30, problem = "feature", crossover){
+  #Specify GA parameter values; using the default values below. 
+  if (problem == "feature"){
+    maxGenerations <<- 30    #<<- makes it a global variable. So it will be visible to other functions e.g. monitor()
+    popSize = 50
+    pcrossover = 0.8
+    pmutation = 0.1
+    type = "binary"
+    fitness = featureFitness              #fitness function defined in feature-selection.R
+    crossover = ""
+    
+    }
+  
+  else {
+    cat("invalid problem specified. Exiting ... \n")
+    return()
+  }
+  
+  if (crossover == "sp") { 
+    defaultControl <- gaControl()
+    gaControl("binary" = list(selection = "gabin_spCrossover"))
+  } 
+  else if (crossover == "uni")  gaControl("binary" = list(selection = "gabin_uCrossover"))
+  else crossover = gaControl("binary" = list(selection = "gaperm_oxCrossover")) 
+  
+  
+  
+  
+  #Set up what stats you wish to note.    
+  statnames = c("best", "mean", "median")
+  thisRunResults <<- matrix(nrow=maxGenerations, ncol = length(statnames)) #stats of a single run
+  resultsMatrix = matrix(1:maxGenerations, ncol = 1)  #stats of all the runs
+  
+  resultNames = character(length(statnames)*noRuns)
+  resultNames[1] = "Generation"
+  
+  bestFitness <<- -Inf
+  bestSolution <<- NULL
+  for (i in 1:noRuns){
+    cat(paste("Starting Run ", i, "\n"))
+    if (problem == "feature")
+      GA <- ga(type=type, fitness = fitness, init_v = binary_vector, nBits = length(binary_vector), 
+               seed=i, popSize = popSize, 
+               pcrossover = pcrossover, pmutation = pmutation, 
+               maxiter = maxGenerations, monitor= monitor)
+   
+    resultsMatrix = cbind(resultsMatrix, thisRunResults)
+    
+    if (GA@fitnessValue > bestFitness){
+      bestFitness <<- GA@fitnessValue
+      bestSolution <<- GA@solution
+    }
+    #Create column names for the resultsMatrix
+    for (j in 1:length(statnames)) resultNames[1+(i-1)*length(statnames)+j] = paste(statnames[j],i)
+  }
+  colnames(resultsMatrix) = resultNames
+  return (resultsMatrix)
+}
 
 
 
@@ -373,7 +386,96 @@ monitor <- function(obj){
 
 
 
-runGA(problem = "feature")
+
+
+
+ga1 <- runGA(problem = "feature", crossover= "sp")
+
+save.image(file='ga1.RData')
+
+
+ga2 <- runGA(problem = "feature", crossover= "uni")
+save.image(file='ga2.RData')
+
+ga3 <- runGA(problem = "feature")
+save.image(file='ga3.RData')
+
+
+######################### PLOT GRAPH
+findminmax <- function(data, minimise = TRUE){
+  minmax <- NA
+  if (minimise) minmax <- min(data[,2])
+  else minmax <- max(data[,2])
+  
+  rownum <- which(data[,2] == minmax)
+  if (length(rownum) > 1) rownum <- rownum[1]
+  
+  if (minimise)
+    return (minmax - data [rownum,3])
+  else return (minmax + data [rownum,3])
+}
+
+plotbars<- function(data1, data2, data3, 
+                    cap1 = "GA1", cap2 = "GA2", cap3 = "GA3"){
+  data = data1
+  hues = c("black","blue","green")
+  
+  min1 = findminmax(data1)   #min(data1) - data1 [which(data1 == min(data1))+2*nrow(data1)]
+  min2 = findminmax(data2)   #min(data2) - data2 [which(data2 == min(data2))+nrow(data2)]
+  min3 = findminmax(data3)   #min(data3) - data3 [which(data3 == min(data3))+nrow(data3)]
+  
+  max1 = findminmax(data1, FALSE)   #max(data1) + data1 [which(data1 == max(data1))+nrow(data1)]
+  max2 = findminmax(data2, FALSE)   #max(data2) + data2 [which(data2 == max(data2))+nrow(data2)]
+  max3 = findminmax(data3, FALSE)   #max(data3) + data3 [which(data3 == max(data3))+nrow(data3)]
+  
+  minn = min(min1, min2, min3)
+  maxx = max(max1, max2, max3)
+  
+  
+  df <- data.frame(x=data[,1], y=data[,2], dy = data[,3])  #dy = length of error bar
+  plot(df$x, df$y, type = "l", col = hues[1],  ylim=c(minn, maxx), #ylim = c(0.96, 0.985),   #choose ylim CAREFULLY as per your data ranges
+       main = "Best Fitness Values", xlab = "Generations", ylab = "Fitness")  #plot the line (mean values)
+  segments(df$x, df$y - df$dy, df$x, df$y + df$dy, col = hues[1]);    #plot the error bars mean-errorbar, mean+errorbar
+  
+  data = data2
+  df <- data.frame(x=data[,1], y=data[,2], dy = data[,3])  #dy = length of error bar  
+  lines(df$x, df$y, col = hues[2])
+  segments(df$x, df$y - df$dy, df$x, df$y + df$dy, col = hues[2]); 
+  
+  data = data3
+  df <- data.frame(x=data[,1], y=data[,2], dy = data[,3])  #dy = length of error bar  
+  lines(df$x, df$y, col = hues[3])
+  segments(df$x, df$y - df$dy, df$x, df$y + df$dy, col = hues[3]); 
+  
+  legend("topleft", legend = c(cap1, cap2, cap3), col = hues, lwd = 1,
+         cex = 0.5)
+}
+
+
+parseData <- function(data, firstcolumn, noRuns){
+  col <- firstcolumn
+  
+  allstats <- (ncol(data)-1)/noRuns   #how many stats were collected. Omit the first column (Generations)
+  cols <- seq(col,noRuns*allstats, by=allstats)
+  subdata <- data[,cols]
+  noGens <- nrow(data)
+  pdata <- matrix(nrow = noGens, ncol = 3)
+  for (i in 1:noGens){
+    pdata[i,1] = i
+    pdata[i,2] = mean(subdata[i,])
+    pdata[i,3] = 1.96*sd((subdata[i,]))/sqrt(noRuns)   #compute the length of error bar. 
+  }
+  
+  return (pdata)
+}
+
+gaParsed1 = parseData(ga1, firstcolumn = ga1[[,1]],noRuns=30)
+plotbars(ga1, ga2, ga3)
+
+plot(ga1)
+plot(ga2)
+plot(ga3)
+
 
 ##################### FEATURE SELECTION
 
