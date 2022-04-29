@@ -2,11 +2,12 @@ if(!require(devtools)) {
   #install.packages('devtools')
   devtools::install_github("dleutnant/tsconvert")
 }
-
+# https://www.youtube.com/watch?v=iwRtpJDDw5M
 #load("ga1.RData")
 load("ga3.RData")
 
-tq#install.packages("remotes")
+
+#install.packages("remotes")
 #remotes::install_github("dleutnant/tsconvert")
 library("tsconvert")
 
@@ -56,141 +57,97 @@ if(F){
 }
 
 View(solar_data)
+
+
+
+
+
+
+
+###################### TIME SREIES SIMPLE PREDICTION
 library(forecast)
-arima=auto.arima(as.data.frame(solar_data)[,4]) # detected order is AR=2, MA=1
 
-
-plot(arima$fitted)
-solar_data = ts(data = solar_data$Mon_mean_SS, 
+solar_data_ts_data = ts(data = solar_data$Mon_mean_SS, 
                 start = "1992", 
                 end = "2022",
                 frequency = 12)
+plot(solar_data_ts_data, 
+     main="Time Series Of Monthly Sunspot Since 1992",
+     xlab="Time",
+     ylab= "Mean Sunspots",
+     col="red")
+
+arima=auto.arima(solar_data_ts_data) # detected order is AR=2, MA=1
+
+
+arima
+plot(arima$fitted,  main="Fitted Time Series of ARIMA model on monthly data",
+     xlab="Time",
+     ylab= "Mean Sunspots",
+     col="green")
+forcast = forecast(arima, h = 60)
+forcast
+
+plot(forcast, main="Forcasted values of the next 60 months",
+     xlab="Time",
+     ylab= "Mean Sunspots",
+     col="blue"
+     )
+plot(forcast$residuals)
+qqnorm(forcast$residuals)
+acf(forcast$residuals)
+pacf(forcast$residuals, main="PACF Lag error bars ")
+summary(arima)
+accuracy(arima)
+
 
 p = plot(solar_data)
 line(p)
 
 View(solar_data)
+
+
+
+predicted_arima_ga3 <<- Arima(solar_data_ts_data , 
+                              order= c(0, 3, 0)  
+)
+
+predicted_arima_ga3
+plot(predicted_arima_ga3$x,col="red")
+lines(fitted(predicted_arima_ga3),col="blue")
+cat(paste("p: ", p_value), " ", paste("d: ", d_value), paste("q: ", q_value))
+plot(predicted_arima_ga3$residuals)
+forcast_ga3 = forecast(predicted_arima_ga3, h = 60)
+forcast_ga3
+
+plot(forcast_ga3)
+plot(forcast_ga3$residuals)
+qqnorm(forcast_ga3$residuals)
+acf(forcast_ga3$residuals)
+pacf(forcast_ga3$residuals)
+summary(predicted_arima_ga3)
+accuracy(predicted_arima_ga3)
+
+
+
+############### PUT GP CODE HERE UNDER RCURL
 library(RCurl) # load RCurl package
 # get sunspot series
-
-
-series=solar_data # read from file
-#L=length(series) # series length
-View(series)
-L=nrow(series) # series length
-forecasts=32 # number of 1-ahead forecasts 7.3 Time Series Forecasting 135
-outsamples=as.data.frame(series[(L-forecasts+1):L,]) # out-of-samples
-sunspots=as.data.frame(series[1:(L-forecasts),]) # in-samples
-View(outsamples)
-View(sunspots)
-# mean absolute error of residuals
-maeres=function(residuals) mean(abs(residuals))
-# fit best ARIMA model:
-INIT=10 # initialization period (no error computed before)
-library(forecast) # load forecast package
-arima=auto.arima(as.data.frame(solar_data)[,1]) # detected order is AR=2, MA=1
-
-# https://www.researchgate.net/post/What-is-the-purpose-of-the-AR-Roots-graph-in-Eviews-when-dealing-with-VECM
-plot(arima) # show ARIMA model
-print(arima)
-cat("arima fit MAE=",
-    maeres(arima$residuals[INIT:length(sunspots)]),"\n")
-# one-step ahead forecasts:
-# (this code is needed because forecast function
-# only issues h-ahead forecasts)
-LIN= nrow(sunspots) # length of in-samples
-f1=rep(NA,forecasts)
-
-
-for(h in 1:forecasts)
-{ # execute arima with fixed coefficients but with more  in-samples:
-    arima1=arima(series[1:(LIN+h-1),1],
-                 order=arima$arma[c(2,1,3)],
-                 fixed=arima$coef)
-    
-    f1[h]=forecast(arima1,h=1)$mean[1]
-}
-
-e1=maeres(outsamples-f1)
-text1=paste("arima (MAE=",round(e1,digits=1),")",sep="")
-# fit genetic programming arithmetic model:
-library(rgp) # load rgp
-ST=inputVariableSet("x1","x2")#same order of AR arima component
-cF1=constantFactorySet(function() rnorm(1)) # mean=0, sd=1
-FS=functionSet("+","*","-","/") # arithmetic
-# genetic programming time series function
-# receives function f
-# if(h>0) then returns 1-ahead forecasts
-# else returns MAE over fitting period (in-samples)
-gpts=function(f,h=0)
-{
-  if(h>0) TS=series
-  else TS=series[1:LIN]
-  LTS=length(TS)
-  F=rep(0,LTS) # forecasts
-  E=rep(0,LTS) # residuals
-  if(h>0) I=(LTS-h+1):LTS # h forecasts
-  else I=INIT:LTS # fit to in-samples
-  for(i in I)
-  {
-    F[i]=f(TS[i-1],TS[i-2])
-    if(is.nan(F[i])) F[i]=0 # deal with NaN
-    E[i]=TS[i]-F[i]
-  }
-  if(h>0) return (F[I]) # forecasts
-  else return(maeres(E[I])) # MAE on fit
-}
-# mutation function
-mut=function(func)
-{ mutateSubtree(func,funcset=FS,inset=ST,conset=cF1,
-                mutatesubtreeprob=0.3,maxsubtreedepth=4)}
-set.seed(12345) # set for replicability
-gp=geneticProgramming(functionSet=FS,inputVariables=ST,
-                      constantSet=cF1,
-                      populationSize=100,
-                      fitnessFunction=gpts,
-                      stopCondition=makeStepsStopCondition(1000),
-                      mutationFunction=mut,
-                      verbose=TRUE)
-f2=gpts(gp$population[[which.min(gp$fitnessValues)]],
-        h=forecasts)
-e2=maeres(outsamples-f2)
-text2=paste("gp (MAE=",round(e2,digits=1),")",sep="")
-cat("best solution:\n")
-print(gp$population[[which.min(gp$fitnessValues)]])
-cat("gp fit MAE=",min(gp$fitnessValues),"\n")
-# show quality of one-step ahead forecasts:
-ymin=min(c(outsamples,f1,f2))
-ymax=max(c(outsamples,f1,f2))
-pdf("fsunspots.pdf")
-par(mar=c(4.0,4.0,0.1,0.1))
-plot(outsamples,ylim=c(ymin,ymax),type="b",pch=1,
-     xlab="time (years after 1980)",ylab="values",cex=0.8)
-lines(f1,lty=2,type="b",pch=3,cex=0.5)
-lines(f2,lty=3,type="b",pch=5,cex=0.5)
-legend("topright",c("sunspots",text1,text2),lty=1:3,
-       pch=c(1,3,5))
-dev.off()
-
-
-
-
-
 
 
 
 ############### BINARY VECTOR
 
-binary_vector <- sample(c(0,1), replace=TRUE, size=15)
+binary_vector <- sample(c(0,1), replace=TRUE, size=10)
 binary_vector
 
-p_value <- binary_vector[0:5]
+p_value <- binary_vector[0:4]
 p_value
 
-d_value <-  binary_vector[6:10]
+d_value <-  binary_vector[5:6]
 d_value
 
-q_value <- binary_vector[11:15]
+q_value <- binary_vector[7:10]
 q_value
 
 
@@ -206,15 +163,92 @@ p_value <- bitsToInt(p_value)
 d_value <- bitsToInt(d_value)
 q_value <- bitsToInt(q_value)
 
+p_value
+d_value
+q_value
+
 
 library(forecast)
+
+solar_data_ts_data = ts(data = solar_data$Mon_mean_SS, 
+                        start = "1992", 
+                        end = "2022",
+                        frequency = 12)
+plot(solar_data_ts_data)
+
+
+
+out <- tryCatch(
+  { 
+    predicted_arima <<- Arima(solar_data_ts_data , 
+                              order= c(11, 1, 12)  
+    )
+    # Just to highlight: if you want to use more than one 
+    # R expression in the "try" part then you'll have to 
+    # use curly brackets.
+    # 'tryCatch()' will return the last evaluated expression 
+    # in case the "try" part was completed successfully
+    
+    message("This is the 'try' part")
+    
+    
+  },
+  error=function(cond) {
+    message("Here's the original error message:")
+    message(cond)
+    # Choose a return value in case of error
+    return(-100000000000000)
+  }
+
+ 
+)
+
+out
+
+predicted_arima
+plot(predicted_arima$x,col="red")
+lines(fitted(predicted_arima),col="blue")
+cat(paste("p: ", p_value), " ", paste("d: ", d_value), paste("q: ", q_value))
+plot(predicted_arima$residuals)
+forcast1 = forecast(predicted_arima, h = 17)
+forcast1
+
+plot(forcast1)
+plot(forcast1$residuals)
+qqnorm(forcast1$residuals)
+acf(forcast1$residuals)
+pacf(forcast1$residuals)
+summary(arima1)
+accuracy(arima1)
+
+
+
+
+arima1=auto.arima(solar_data_ts_data,
+                 start.p = p_value, 
+                 start.q = q_value,
+                 d = d_value) # detected order is AR=2, MA=1
+
+
+arima1
+plot(arima1$fitted)
+forcast1 = forecast(arima1, h = 17)
+forcast1
+
+plot(forcast1)
+plot(forcast1$residuals)
+qqnorm(forcast1$residuals)
+acf(forcast1$residuals)
+pacf(forcast1$residuals)
+summary(arima1)
+accuracy(arima1)
+
+
 
 arima=auto.arima(as.data.frame(solar_data)[,4], 
                  max.p = p_value, 
                  max.q = q_value,
                  max.d = d_value) # detected order is AR=2, MA=1
-plot(arima$residuals)
-
 
 #################### GA CALCULATION
 
@@ -224,7 +258,6 @@ plot(arima$residuals)
 
 ####################### RUN GA
 library(GA)
-
 
 rmse <- function(arima){
   return(sqrt(mean(arima$residuals)^2))
@@ -241,11 +274,11 @@ featureFitness <- function(string, init_v) {
                 #create a matrix of values for all the variables contained in 'inc'
   
   
-  p_value <- string[0:5]
+  p_value <- string[0:4]
   
-  d_value <-  string[6:10]
+  d_value <-  string[5:6]
   
-  q_value <- string[11:15]
+  q_value <- string[7:10]
   
   
   
@@ -254,13 +287,31 @@ featureFitness <- function(string, init_v) {
   d_value <- bitsToInt(d_value)
   q_value <- bitsToInt(q_value)
   
-  #cat(paste("p_value ", p_value, "q_value ", q_value,"d_value ", d_value, "\n"))
-  mod <- auto.arima(as.data.frame(solar_data)[,4], 
-                 max.p = p_value, 
-                 max.q = q_value,
-                 max.d = d_value)                  #lm.fit computes faster than the 'lm'; because we have to fit thousands of models, use something efficient. 
+  cat(paste("p_value ", p_value, "q_value ", q_value,"d_value ", d_value, "\n"))
+  #mod <- auto.arima(as.data.frame(solar_data)[,4], 
+  #               max.p = p_value, 
+   #              max.q = q_value,
+   #              max.d = d_value)                  #lm.fit computes faster than the 'lm'; because we have to fit thousands of models, use something efficient. 
   #class(mod) <- "lm"
-  rmse(mod)   
+ 
+  error_check <- F
+  out <- tryCatch(
+    {
+      predicted_arima <<- Arima(solar_data_ts_data , 
+                                order= c(p_value, d_value, q_value)  
+      )  
+    }, error=function(cond) {
+      message("Here's the original error message:")
+      message(cond)
+      error_check = T
+      # Choose a return value in case of error
+      return(-10E20)
+    }
+    
+  )
+  
+  if (error_check) return(-10E20)
+   rmse(predicted_arima)   
 }
 
 
@@ -302,31 +353,13 @@ monitor <- function(obj){
 
 
 
-runGA2 <- function(){
-  
-  maxGenerations <<- 5    #<<- makes it a global variable. So it will be visible to other functions e.g. monitor()
-  popSize = 100
-  pcrossover = 0.8
-  pmutation = 0.1
-  type = "binary"
-  fitness = featureFitness   
-  
-  GA <- ga(type=type, fitness = fitness, init_v = binary_vector, nBits = length(binary_vector), 
-           seed=1, popSize = popSize, 
-           pcrossover = pcrossover, pmutation = pmutation, 
-           maxiter = maxGenerations, monitor= monitor)
 
-  return(GA)
-}
-
-#some <- runGA2()
-
-runGA <- function(noRuns = 30, problem = "feature", crossover){
+runGA <- function(noRuns = 3, problem = "feature", crossover){
   #Specify GA parameter values; using the default values below. 
   if (problem == "feature"){
-    maxGenerations <<- 30    #<<- makes it a global variable. So it will be visible to other functions e.g. monitor()
-    popSize = 50
-    pcrossover = 0.8
+    maxGenerations <<- 8    #<<- makes it a global variable. So it will be visible to other functions e.g. monitor()
+    popSize = 30
+    pcrossover = 0.7
     pmutation = 0.1
     type = "binary"
     fitness = featureFitness              #fitness function defined in feature-selection.R
@@ -390,16 +423,34 @@ runGA <- function(noRuns = 30, problem = "feature", crossover){
 
 
 ga1 <- runGA(problem = "feature", crossover= "sp")
+ga1_bestfitness = bestFitness
+ga1_bestSolution = bestSolution
 
 save.image(file='ga1.RData')
 
+View(solar_data)
 
 ga2 <- runGA(problem = "feature", crossover= "uni")
 save.image(file='ga2.RData')
+ga2_bestfitness = bestFitness
+ga2_bestSolution = bestSolution
 
+ga1_bestfitness
+ga1_bestSolution
+
+ga2_bestSolution
+ga2_bestfitness
+
+ga3_bestfitness
+ga3_bestSolution
+
+ga3
+ga2
 ga3 <- runGA(problem = "feature")
 save.image(file='ga3.RData')
 
+ga3_bestfitness = bestFitness
+ga3_bestSolution = bestSolution
 
 ######################### PLOT GRAPH
 findminmax <- function(data, minimise = TRUE){
@@ -417,6 +468,9 @@ findminmax <- function(data, minimise = TRUE){
 
 plotbars<- function(data1, data2, data3, 
                     cap1 = "GA1", cap2 = "GA2", cap3 = "GA3"){
+  print(data1)
+  print(data2)
+  print(data3)
   data = data1
   hues = c("black","blue","green")
   
@@ -451,7 +505,6 @@ plotbars<- function(data1, data2, data3,
          cex = 0.5)
 }
 
-
 parseData <- function(data, firstcolumn, noRuns){
   col <- firstcolumn
   
@@ -469,61 +522,152 @@ parseData <- function(data, firstcolumn, noRuns){
   return (pdata)
 }
 
-gaParsed1 = parseData(ga1, firstcolumn = ga1[[,1]],noRuns=30)
-plotbars(ga1, ga2, ga3)
+
+ga1
+ga2
+ga3
+
+gaParsed1 = parseData(ga1, firstcolumn = 2, noRuns=1)
+gaParsed2 = parseData(ga2, firstcolumn = 2, noRuns=1)
+gaParsed3 = parseData(ga3, firstcolumn = 2, noRuns=1)
+
+gaParsed1
+gaParsed2
+gaParsed3
+
+cat("best solution:\n")
+View(ga2)
+
+plotbars(gaParsed1, gaParsed2, gaParsed3)
 
 plot(ga1)
 plot(ga2)
 plot(ga3)
 
 
-##################### FEATURE SELECTION
 
-getBenchmark <- function(){
-  #if the "UsingR" has not been installed on your system, install it. 
-  data("fat", package = "UsingR")
-  
-  #The dataset is described here: https://rdrr.io/cran/UsingR/man/fat.html. 
-  #str(fat)  #Uncomment/Run this command to check the structure of the dataset
-  
-  #Fit a linear model. Dependent/outcome variable is 'body.fat.siri'; independent variables are all those listed after '~'.
-  mod <- lm(body.fat.siri ~ age + weight + height + neck + chest + abdomen +
-              +    hip + thigh + knee + ankle + bicep + forearm + wrist, data = fat)
-  return (mod)
-}
 
-getData<-function(){
-  #if the "UsingR" has not been installed on your system, install it. 
-  data("fat", package = "UsingR")
-  
-  #The dataset is described here: https://rdrr.io/cran/UsingR/man/fat.html. 
-  #str(fat)  #Uncomment/Run this command to check the structure of the dataset
-  
-  #Fit a linear model. Dependent/outcome variable is 'body.fat.siri'; independent variables are all those listed after '~'.
-  mod <- getBenchmark()
-  
-  #Extract the input data from the fitted model. You can extract the data directly from the variable 'fat' but you 
-  #will have to explicitly mention all the variables used in the fitting above. 
-  xx <- model.matrix(mod)[, -1]   
-  yy <- fat$body.fat.siri          #the response variable
-  data <- cbind(xx,yy)
-  return (data)
-}
+################## EXPERIMENTAL RESULTS
+
+######## GA ARIMA FUNCTION 
+ga1_bestSolution =c(0, 0, 0, 0, 1, 1, 0, 0, 0, 0)
+ga1_bestfitness = c(0, 0, 0, 0, 1, 1, 0, 0, 0, 0)
+
+bit1 <- as.vector(ga1_bestSolution)
+
+bit1
+p_value1 = bitsToInt(bit1[0:4])
+d_value1 = bitsToInt(bit1[5:6])
+q_value1 = bitsToInt(bit1[7:10])
+p_value1
+d_value1
+q_value1
 
 
 
-featureFitness <- function(string,xx,yy) {
-  #print(string)                         #uncomment this line if you want to print every single solution
-  inc <- which(string == 1)              #'inc' includes those features/variables for which 'string' contains 1
-  if (length(inc)==0) return (-10E20)    #if  no feature is selected then give a terrible fitness to this solution
-  X <- cbind(1, xx[,inc])                #create a matrix of values for all the variables contained in 'inc'
-  
-  mod <- lm.fit(X, yy)                  #lm.fit computes faster than the 'lm'; because we have to fit thousands of models, use something efficient. 
-  class(mod) <- "lm"
-  -AIC(mod)                  #AIC should be minimised. But the GA package maximises. So let's turn it into a
-  #maximisation problem. However, negative values will be a problem with roulette wheel
-  #selection which requires positive values to build a roulette wheel. Therefore, consider
-  #other ways of inverting the minimisation problem such as 1/(1+AIC); this normalises 
-  #the values between 0 (the worst) and 1 (the best).
-}
+
+
+
+predicted_arima_ga1 <<- Arima(solar_data_ts_data , 
+                              order= c(0, 3, 0)  
+)
+
+predicted_arima_ga1
+plot(predicted_arima_ga1$x,col="red", main="Predicted Sunspot for Single Point Crossover", ylab="Monthly Sunspots", xlab="Years")
+lines(fitted(predicted_arima_ga1),col="blue")
+cat(paste("p: ", p_value), " ", paste("d: ", d_value), paste("q: ", q_value))
+plot(predicted_arima_ga1$residuals,  main="Predicted Sunspot for Single Point Crossover", ylab="Monthly Sunspots", xlab="Years")
+forcast_ga1 = forecast(predicted_arima_ga1, h = 60)
+forcast_ga1
+
+plot(forcast_ga1,  main="Predicted Sunspot Region of Single Point Crossover", ylab="Monthly Sunspots", xlab="Years")
+plot(forcast_ga1$residuals)
+qqnorm(forcast_ga1$residuals)
+acf(forcast_ga1$residuals)
+pacf(forcast_ga1$fitted, main= "Predicted Values Partial Autocorrelaton")
+summary(predicted_arima_ga1)
+accuracy(predicted_arima_ga1)
+
+
+
+####### GA2 ARIMA SOLUTION
+ga2_bestSolution = c(0,  0,  0,  0,  1,  1,  0,  0,  0,0)
+
+bit2 <- as.vector(ga2_bestSolution)
+
+bit2
+p_value2 = bitsToInt(bit2[0:4])
+d_value2 = bitsToInt(bit2[5:6])
+q_value2 = bitsToInt(bit2[7:10])
+p_value2
+d_value2
+q_value2
+
+
+
+
+predicted_arima_ga2 <<- Arima(solar_data_ts_data , 
+                              order= c(p_value2, d_value2, q_value2)  
+)
+
+predicted_arima_ga2
+plot(predicted_arima_ga2$x,col="red",  main="Predicted Sunspot for Uniform Crossover", ylab="Monthly Sunspots", xlab="Years")
+lines(fitted(predicted_arima_ga2),col="blue")
+cat(paste("p: ", p_value), " ", paste("d: ", d_value), paste("q: ", q_value))
+plot(predicted_arima_ga2$residuals)
+forcast_ga2 = forecast(predicted_arima_ga2, h = 60)
+forcast_ga2
+
+plot(forcast_ga2, main="Predicted Sunspot Region of Uniform Crossover", ylab="Monthly Sunspots", xlab="Years")
+plot(forcast_ga2$residuals)
+qqnorm(forcast_ga2$residuals)
+acf(forcast_ga2$residuals)
+pacf(forcast_ga2$fitted, main="Predicted Values Partial Autocorrelaton")
+summary(predicted_arima_ga2)
+accuracy(predicted_arima_ga2)
+
+
+
+
+######### GA3 ARIMA SOLUTION
+
+ga3_bestfitness 
+ga3_bestSolution = c(0,  0,  0,  0,  1,  1,  0,  0,  0,   0)
+
+bit3 <- as.vector(ga3_bestSolution)
+
+bit3
+p_value3 = bitsToInt(bit3[0:4])
+d_value3 = bitsToInt(bit3[5:6])
+q_value3 = bitsToInt(bit3[7:10])
+p_value3
+d_value3
+q_value3
+
+
+
+predicted_arima_ga3 <<- Arima(solar_data_ts_data , 
+                              order= c(p_value3, d_value3, q_value3)  
+)
+
+predicted_arima_ga3
+plot(predicted_arima_ga3$x,col="red",   main="Predicted Sunspot for Crossover Order", ylab="Monthly Sunspots", xlab="Years")
+lines(fitted(predicted_arima_ga3),col="blue")
+cat(paste("p: ", p_value), " ", paste("d: ", d_value), paste("q: ", q_value))
+plot(predicted_arima_ga3$residuals)
+forcast_ga3 = forecast(predicted_arima_ga3, h = 60)
+forcast_ga3
+
+plot(forcast_ga3, main="Predicted Sunspot Region of Uniform Crossover", ylab="Monthly Sunspots", xlab="Years")
+plot(forcast_ga3$residuals)
+qqnorm(forcast_ga3$residuals)
+acf(forcast_ga3$residuals)
+pacf(forcast_ga3$fitted, main="Predicted Values Partial Autocorrelaton")
+summary(predicted_arima_ga3)
+accuracy(predicted_arima_ga3)
+
+
+save.image(file='gaa.RData')
+
+
 
